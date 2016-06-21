@@ -1,0 +1,196 @@
+---
+title: "Classify_Raster"
+author: "Megan Cattau"
+date: "June 21, 2016"
+output: html_document
+---
+
+# Classify a Raster using Threshold Values in R
+We will classify a raster file using defined value ranges in R.
+
+Load the required libraries.
+
+```{r load-libraries}
+# load libraries
+library(raster)
+library(rhdf5)
+library(rgdal)
+
+# be sure to set your working directory
+setwd("~/Documents/data/NEONDI-2016/Tues-am-LiDAR") # Mac
+
+#source("/Users/lwasser/Documents/GitHub/neon-aop-package/neonAOP/R/aop-data.R")
+
+```
+
+Import and view LiDAR data and histogram of data
+Open the NEON LiDAR Digital Surface and Digital Terrain Models (DSM and DTM) which are in Geotiff format. Plot the data and look at a histogram
+
+```{r import-view-LiDAR-data}
+# read LiDAR canopy height model
+chm <- raster("../NEONdata/D17-California/TEAK/2013/lidar/TEAK_lidarCHM.tif")
+
+# assign chm values of 0 to NA
+chm[chm==0] <- NA
+
+# do the values in the data look reasonable?
+plot(chm,
+     main="Canopy Height \n LowerTeakettle, California")
+
+hist(chm,
+     main="Distribution of Canopy Height  \n Lower Teakettle, California",
+     xlab="Tree Height (m)",
+     col="springgreen")
+```
+
+
+Import Aspect Data
+Next, we’ll import an aspect dataset - one of the NEON data products.
+
+```{r aspect}
+# calculate aspect of cropped DTM if you'd like to compute it yourself
+# aspect <- terrain(your-dem-or-terrain-data.tif, opt = "aspect", unit = "degrees", neighbors = 8)
+
+# read in aspect .tif
+aspect <- raster("../NEONdata/D17-California/TEAK/2013/lidar/TEAK_lidarAspect.tif")
+
+plot(aspect,
+     main="Aspect for Lower Teakettle Field Site",
+     axes=F)
+```
+
+Threshold Based Raster Classification
+Next, we will create a classified raster object. To do this we need to:
+
+```{r classification}
+# first create a matrix of values that represent the classification threshold ranges and the associated “class”
+# Our range of values are as follows: We will assign all north facing slopes “1” and south facing “2”.
+# North Facing Slopes: 0-45 degrees, 315-360 degrees; class=1
+# South Facing Slopes: 135-225 degrees; class=2
+
+class.m <- c(0, 45, 1,
+             45, 135, NA,
+             135, 225, 2,  
+             225 , 315, NA,
+             315, 360, 1)
+class.m
+
+# reshape the object into a matrix with columns and rows
+rcl.m <- matrix(class.m, 
+                ncol=3, 
+                byrow=TRUE)
+rcl.m
+
+# reclassify the raster rcl.m using the reclass function to create a new raster.
+asp.ns <- reclassify(aspect, 
+                     rcl.m)
+
+# plot outside of the plot region
+
+# make room for a legend
+par(xpd = FALSE, mar=c(5.1, 4.1, 4.1, 4.5))
+# plot
+plot(asp.ns,
+     col=c("white","blue","green"), # hard code colors, unclassified (0)=white,
+		 #N (1) =blue, S(2)=green
+     main="North and South Facing Slopes \nLower Teakettle",
+     legend=F)
+# allow legend to plot outside of bounds
+par(xpd=TRUE)
+# create the legend
+legend((par()$usr[2] + 20), 4103300,  # set x,y legend location
+       legend = c("North", "South"),  # make sure the order matches the colors, next
+       fill = c("blue", "green"),
+       bty="n") # turn off border
+```
+
+Export Classified Raster
+```{r export, eval=FALSE}
+# export geotiff
+writeRaster(asp.ns,
+            filename="../outputs/TEAK/Teak_nsAspect2.tif",
+            format="GTiff",
+            options="COMPRESS=LZW",
+            overwrite = TRUE,
+            NAflag = -9999)
+```
+
+
+Mask a Raster using Threshold Values in R
+
+```{r load-libraries-again}
+# load libraries
+library(neonAOP)
+```
+
+Import LiDAR data
+
+To begin, we will open the NEON LiDAR Digital Surface and Digital Terrain Models (DSM and DTM) which are in Geotiff format.
+```{r import-DSM-and-DTM}
+# import aspect data from previous lesson
+teak_nsAspect <- raster("../outputs/TEAK/TEAK_nsAspect2.tif")
+
+# North facing slope = 1
+# South facing slope = 2
+
+# legend outside of the plot region
+# make room for a legend
+par(xpd = FALSE, mar=c(5.1, 4.1, 4.1, 4.5))
+
+plot(teak_nsAspect, 
+     col=c("white","blue","green"),
+     main="North and South Facing Slopes \n Lower Teakettle",
+     legend=F)
+
+# allow legend to plot outside of bounds
+par(xpd=TRUE)
+
+legend((par()$usr[2] + 20), 4103300, # set xy legend location
+       legend = c("North", "South"),
+       fill = c("blue", "green"), 
+       bty="n") # turn off border
+```
+
+
+Mask Data
+
+Once we have created a threhold classified raster, we can use it for different things. One application is to use it as an analysis mask for another dataset.
+
+Let’s try to find all pixels that have an NDVI value >.6 and are north facing.
+
+We fist open NDVI
+```{r mopen-NDVI}
+
+# open NEON NDVI data
+ndvi <- raster("../NEONdata/D17-California/TEAK/2013/spectrometer/veg_index/TEAK_NDVI.tif")
+ndvi
+
+hist(ndvi,
+     main="NDVI for Lower Teakettle Field Site")
+```
+
+Change NDVI <.6 to NA
+```{r change-low-NDVI-to-NA}
+# change values less than .6 to NA
+ndvi[ndvi<.6] <- NA
+plot(ndvi,
+     main="NDVI > .6")
+```
+
+Look only at pixels that are N- or S-facing
+
+```{r mask-N-slopes}
+n.face.aspect <- teak_nsAspect==1
+plot(n.face.aspect)
+
+# mask out only pixels that are north facing and NDVI >.6
+# take NDVI layer and mask it with N facing slopes
+nFacing.ndvi <- mask(ndvi, n.face.aspect)
+?mask
+
+plot(nFacing.ndvi,
+     main="North Facing Locations \n NDVI > .6",
+     legend=F)
+```
+
+
