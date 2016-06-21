@@ -169,23 +169,24 @@ hist(ndvi,
      main="NDVI for Lower Teakettle Field Site")
 ```
 
-Change NDVI <.6 to NA
-```{r change-low-NDVI-to-NA}
-# change values less than .6 to NA
+Exclude everything that's not N facing or NDVI>.6 in the respective layers
+```{r exclude-not-N-and-not-high-NDVI}
+# change values that are not N facing to NA
+teak_nsAspect[teak_nsAspect!=1] <- NA
+plot(teak_nsAspect,
+     main="N face aspect")
+
+# change values that are <.6 NDVI to NA
 ndvi[ndvi<.6] <- NA
 plot(ndvi,
      main="NDVI > .6")
 ```
 
-Look only at pixels that are N- or S-facing
-
+Mask NDVI for N slopes
 ```{r mask-N-slopes}
-n.face.aspect <- teak_nsAspect==1
-plot(n.face.aspect)
-
 # mask out only pixels that are north facing and NDVI >.6
 # take NDVI layer and mask it with N facing slopes
-nFacing.ndvi <- mask(ndvi, n.face.aspect)
+nFacing.ndvi <- mask(ndvi, teak_nsAspect)
 ?mask
 
 plot(nFacing.ndvi,
